@@ -1,104 +1,320 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>larp</title>
     <style>
-        body {
+        * {
             margin: 0;
-            background: #000;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a1a 50%, #0a0510 100%);
             overflow: hidden;
+            font-family: 'Courier New', monospace;
+            cursor: crosshair;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            font-family: monospace;
+            position: relative;
         }
-        #ascii {
-            color: #0f0;
-            font-size: 12px;
-            line-height: 12px;
+        
+        #ascii-canvas {
+            color: #ff0066;
+            font-size: 8px;
+            line-height: 8px;
             white-space: pre;
             text-align: center;
+            text-shadow: 
+                0 0 10px rgba(255, 0, 102, 0.5),
+                0 0 20px rgba(138, 43, 226, 0.3);
+            letter-spacing: 1px;
+            position: absolute;
+            z-index: 10;
+            pointer-events: none;
+            filter: contrast(1.2) brightness(1.1);
+        }
+        
+        #webgl-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5;
+            opacity: 0.3;
+        }
+        
+        .info {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff0066;
+            font-size: 12px;
+            text-shadow: 0 0 10px rgba(255, 0, 102, 0.8);
+            z-index: 20;
+            opacity: 0;
+            animation: fadeIn 2s 1s forwards;
+        }
+        
+        @keyframes fadeIn {
+            to { opacity: 0.6; }
+        }
+        
+        .glow {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(255, 0, 102, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 1;
+            filter: blur(60px);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.2); opacity: 0.5; }
         }
     </style>
 </head>
 <body>
-    <div id="ascii"></div>
+    <div id="container">
+        <div class="glow"></div>
+        <canvas id="webgl-canvas"></canvas>
+        <pre id="ascii-canvas"></pre>
+        <div class="info">move mouse • click to pause • scroll to zoom</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <script>
-        const chars = " .:-=+*#%@";
-        const width = 80;
-        const height = 40;
-        let angle = 0;
+        // ============ CONFIG ============
+        const ASCII_CHARS = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+        const WIDTH = 120;
+        const HEIGHT = 50;
+        const ROTATION_SPEED = 0.015; // Slower rotation
         
-        function rotate3D(x, y, z, angleX, angleY) {
-            // Rotate around Y axis
-            let tempX = x * Math.cos(angleY) - z * Math.sin(angleY);
-            let tempZ = x * Math.sin(angleY) + z * Math.cos(angleY);
-            
-            // Rotate around X axis
-            let tempY = y * Math.cos(angleX) - tempZ * Math.sin(angleX);
-            tempZ = y * Math.sin(angleX) + tempZ * Math.cos(angleX);
-            
-            return {x: tempX, y: tempY, z: tempZ};
+        // ============ COLORS ============
+        const colors = {
+            primary: [255, 0, 102],    // Hot pink/red
+            secondary: [138, 43, 226], // Purple
+            accent: [255, 20, 147],    // Deep pink
+            dark: [80, 0, 80]          // Dark purple
+        };
+        
+        // ============ STATE ============
+        let mouseX = 0;
+        let mouseY = 0;
+        let isPaused = false;
+        let zoom = 1;
+        let autoRotateAngleY = 0;
+        let autoRotateAngleX = 0;
+        
+        // ============ THREE.JS SETUP ============
+        const webglCanvas = document.getElementById('webgl-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: webglCanvas, 
+            alpha: true,
+            antialias: true 
+        });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.position.z = 80;
+        
+        // Particle system for ambiance
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 200;
+        const positions = new Float32Array(particlesCount * 3);
+        
+        for(let i = 0; i < particlesCount * 3; i++) {
+            positions[i] = (Math.random() - 0.5) * 200;
         }
         
-        function drawText3D() {
-            const buffer = Array(height).fill().map(() => Array(width).fill(' '));
-            const zBuffer = Array(height).fill().map(() => Array(width).fill(-Infinity));
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particlesMaterial = new THREE.PointsMaterial({
+            color: 0xff0066,
+            size: 0.3,
+            transparent: true,
+            opacity: 0.6
+        });
+        
+        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particles);
+        
+        // ============ 3D TEXT GEOMETRY ============
+        function create3DText() {
+            const group = new THREE.Group();
+            const text = 'LARP';
+            const spacing = 15;
             
-            const text = "LARP";
-            const scale = 3;
+            // Letter definitions (simplified voxel-based)
+            const letters = {
+                'L': [[0,0],[0,1],[0,2],[0,3],[0,4],[1,4],[2,4]],
+                'A': [[0,0],[0,1],[0,2],[0,3],[0,4],[1,0],[2,0],[2,1],[2,2],[2,3],[2,4],[1,2]],
+                'R': [[0,0],[0,1],[0,2],[0,3],[0,4],[1,0],[2,0],[2,1],[1,2],[2,3],[2,4]],
+                'P': [[0,0],[0,1],[0,2],[0,3],[0,4],[1,0],[2,0],[2,1],[1,2]]
+            };
             
-            // Simple 3D text coordinates
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i];
-                const offsetX = (i - text.length/2) * 8 * scale;
+            text.split('').forEach((char, charIndex) => {
+                const letterData = letters[char] || [];
+                const offsetX = (charIndex - text.length/2) * spacing;
                 
-                // Create letter shape with points
-                for (let y = -5; y <= 5; y++) {
-                    for (let x = -3; x <= 3; x++) {
-                        // Simple letter detection (you can make this fancier)
-                        let draw = false;
-                        if (char === 'L' && (x === -3 || (y === 5 && x <= 0))) draw = true;
-                        if (char === 'A' && (Math.abs(x) === 3 || (y === -5 && Math.abs(x) <= 3) || (y === 0 && Math.abs(x) <= 2))) draw = true;
-                        if (char === 'R' && (x === -3 || (y <= 0 && x === 3) || y === -5 || y === 0 || (y > 0 && x === Math.floor(y/2) + 1))) draw = true;
-                        if (char === 'P' && (x === -3 || (y <= 0 && x === 3) || y === -5 || y === 0)) draw = true;
+                letterData.forEach(([x, y]) => {
+                    for(let z = -1; z <= 1; z++) {
+                        const geometry = new THREE.BoxGeometry(1, 1, 1);
                         
-                        if (draw) {
-                            for (let z = -2; z <= 2; z++) {
-                                const point = rotate3D(
-                                    x * scale + offsetX,
-                                    y * scale,
-                                    z * scale,
-                                    angle * 0.3,
-                                    angle
-                                );
-                                
-                                // Project to 2D
-                                const perspective = 200 / (200 + point.z);
-                                const screenX = Math.floor(point.x * perspective + width/2);
-                                const screenY = Math.floor(point.y * perspective + height/2);
-                                
-                                if (screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
-                                    if (point.z > zBuffer[screenY][screenX]) {
-                                        zBuffer[screenY][screenX] = point.z;
-                                        const brightness = Math.floor(((point.z + 50) / 100) * (chars.length - 1));
-                                        buffer[screenY][screenX] = chars[Math.max(0, Math.min(chars.length - 1, brightness))];
-                                    }
-                                }
-                            }
-                        }
+                        // Color gradient based on position
+                        const t = (charIndex / text.length);
+                        const color = new THREE.Color(
+                            colors.primary[0]/255 * (1-t) + colors.secondary[0]/255 * t,
+                            colors.primary[1]/255 * (1-t) + colors.secondary[1]/255 * t,
+                            colors.primary[2]/255 * (1-t) + colors.secondary[2]/255 * t
+                        );
+                        
+                        const material = new THREE.MeshBasicMaterial({ 
+                            color: color,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        
+                        const cube = new THREE.Mesh(geometry, material);
+                        cube.position.set(
+                            x * 2.5 + offsetX,
+                            (y - 2) * 2.5,
+                            z * 2.5
+                        );
+                        group.add(cube);
+                    }
+                });
+            });
+            
+            return group;
+        }
+        
+        const textGroup = create3DText();
+        scene.add(textGroup);
+        
+        // ============ ASCII RENDERING ============
+        const asciiCanvas = document.getElementById('ascii-canvas');
+        
+        function render3DToAscii() {
+            const buffer = Array(HEIGHT).fill().map(() => Array(WIDTH).fill(' '));
+            const zBuffer = Array(HEIGHT).fill().map(() => Array(WIDTH).fill(-Infinity));
+            const colorBuffer = Array(HEIGHT).fill().map(() => Array(WIDTH).fill([0,0,0]));
+            
+            // Project each cube to ASCII
+            textGroup.children.forEach(cube => {
+                const worldPos = new THREE.Vector3();
+                cube.getWorldPosition(worldPos);
+                
+                // Apply camera projection
+                const projected = worldPos.clone().project(camera);
+                
+                const screenX = Math.floor((projected.x + 1) * WIDTH / 2);
+                const screenY = Math.floor((1 - projected.y) * HEIGHT / 2);
+                const depth = projected.z;
+                
+                if (screenX >= 0 && screenX < WIDTH && screenY >= 0 && screenY < HEIGHT) {
+                    if (depth > zBuffer[screenY][screenX]) {
+                        zBuffer[screenY][screenX] = depth;
+                        
+                        // Get color from material
+                        const color = cube.material.color;
+                        colorBuffer[screenY][screenX] = [
+                            color.r * 255,
+                            color.g * 255,
+                            color.b * 255
+                        ];
+                        
+                        // Char based on depth
+                        const charIndex = Math.floor(((depth + 1) / 2) * (ASCII_CHARS.length - 1));
+                        buffer[screenY][screenX] = ASCII_CHARS[Math.max(0, Math.min(ASCII_CHARS.length - 1, charIndex))];
                     }
                 }
+            });
+            
+            // Render with color
+            let html = '';
+            for(let y = 0; y < HEIGHT; y++) {
+                for(let x = 0; x < WIDTH; x++) {
+                    const char = buffer[y][x];
+                    const [r, g, b] = colorBuffer[y][x];
+                    
+                    if(char !== ' ') {
+                        // Add color gradient
+                        const brightness = 1 + Math.sin(Date.now() * 0.001 + x * 0.1 + y * 0.1) * 0.2;
+                        html += `<span style="color: rgb(${r*brightness}, ${g*brightness}, ${b*brightness})">${char}</span>`;
+                    } else {
+                        html += char;
+                    }
+                }
+                html += '\n';
             }
             
-            document.getElementById('ascii').textContent = buffer.map(row => row.join('')).join('\n');
-            angle += 0.03;
-            requestAnimationFrame(drawText3D);
+            asciiCanvas.innerHTML = html;
         }
         
-        drawText3D();
+        // ============ ANIMATION LOOP ============
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!isPaused) {
+                // Auto-rotate
+                autoRotateAngleY += ROTATION_SPEED;
+                autoRotateAngleX = Math.sin(autoRotateAngleY * 0.5) * 0.2;
+            }
+            
+            // Mouse influence
+            const targetRotationY = autoRotateAngleY + (mouseX * 0.5);
+            const targetRotationX = autoRotateAngleX + (mouseY * 0.3);
+            
+            textGroup.rotation.y += (targetRotationY - textGroup.rotation.y) * 0.05;
+            textGroup.rotation.x += (targetRotationX - textGroup.rotation.x) * 0.05;
+            
+            // Zoom
+            textGroup.scale.setScalar(zoom);
+            
+            // Animate particles
+            particles.rotation.y += 0.0005;
+            
+            // Render
+            renderer.render(scene, camera);
+            render3DToAscii();
+        }
+        
+        // ============ INTERACTION ============
+        document.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+        
+        document.addEventListener('click', () => {
+            isPaused = !isPaused;
+        });
+        
+        document.addEventListener('wheel', (e) => {
+            zoom += e.deltaY * -0.001;
+            zoom = Math.max(0.5, Math.min(2, zoom));
+        });
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Start
+        animate();
     </script>
 </body>
 </html>
