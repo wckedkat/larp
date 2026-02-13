@@ -5,71 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>larp</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
-        
-        * {
+        body {
             margin: 0;
             padding: 0;
-        }
-        
-        body {
-            background: linear-gradient(180deg, #000000 0%, #0a0014 50%, #140a0a 100%);
+            background: url('larp.gif') repeat;
+            background-size: auto;
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'VT323', monospace;
-            overflow: hidden;
-        }
-        
-        /* Vignette effect */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.9);
-            pointer-events: none;
-        }
-        
-        /* Scanlines */
-        body::after {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: repeating-linear-gradient(
-                0deg,
-                rgba(0, 0, 0, 0.15),
-                rgba(0, 0, 0, 0.15) 1px,
-                transparent 1px,
-                transparent 2px
-            );
-            pointer-events: none;
-            opacity: 0.3;
-        }
-        
-        #ascii-art {
-            filter: drop-shadow(0 0 10px rgba(220, 20, 60, 0.8))
-                    drop-shadow(0 0 20px rgba(138, 43, 226, 0.5));
-            max-width: 90vw;
-            z-index: 10;
-            position: relative;
-        }
-        
-        #ascii-art:hover {
-            filter: drop-shadow(0 0 15px rgba(220, 20, 60, 1))
-                    drop-shadow(0 0 30px rgba(138, 43, 226, 0.7));
-            transform: scale(1.05);
-            transition: all 0.3s ease;
         }
     </style>
 </head>
 <body>
-    <img id="ascii-art" src="larp.gif" alt="LARP">
 </body>
 </html>
