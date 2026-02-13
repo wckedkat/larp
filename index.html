@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>larp</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: monospace;
+        }
+        #ascii {
+            color: #0f0;
+            font-size: 12px;
+            line-height: 12px;
+            white-space: pre;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="ascii"></div>
+    
+    <script>
+        const chars = " .:-=+*#%@";
+        const width = 80;
+        const height = 40;
+        let angle = 0;
+        
+        function rotate3D(x, y, z, angleX, angleY) {
+            // Rotate around Y axis
+            let tempX = x * Math.cos(angleY) - z * Math.sin(angleY);
+            let tempZ = x * Math.sin(angleY) + z * Math.cos(angleY);
+            
+            // Rotate around X axis
+            let tempY = y * Math.cos(angleX) - tempZ * Math.sin(angleX);
+            tempZ = y * Math.sin(angleX) + tempZ * Math.cos(angleX);
+            
+            return {x: tempX, y: tempY, z: tempZ};
+        }
+        
+        function drawText3D() {
+            const buffer = Array(height).fill().map(() => Array(width).fill(' '));
+            const zBuffer = Array(height).fill().map(() => Array(width).fill(-Infinity));
+            
+            const text = "LARP";
+            const scale = 3;
+            
+            // Simple 3D text coordinates
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const offsetX = (i - text.length/2) * 8 * scale;
+                
+                // Create letter shape with points
+                for (let y = -5; y <= 5; y++) {
+                    for (let x = -3; x <= 3; x++) {
+                        // Simple letter detection (you can make this fancier)
+                        let draw = false;
+                        if (char === 'L' && (x === -3 || (y === 5 && x <= 0))) draw = true;
+                        if (char === 'A' && (Math.abs(x) === 3 || (y === -5 && Math.abs(x) <= 3) || (y === 0 && Math.abs(x) <= 2))) draw = true;
+                        if (char === 'R' && (x === -3 || (y <= 0 && x === 3) || y === -5 || y === 0 || (y > 0 && x === Math.floor(y/2) + 1))) draw = true;
+                        if (char === 'P' && (x === -3 || (y <= 0 && x === 3) || y === -5 || y === 0)) draw = true;
+                        
+                        if (draw) {
+                            for (let z = -2; z <= 2; z++) {
+                                const point = rotate3D(
+                                    x * scale + offsetX,
+                                    y * scale,
+                                    z * scale,
+                                    angle * 0.3,
+                                    angle
+                                );
+                                
+                                // Project to 2D
+                                const perspective = 200 / (200 + point.z);
+                                const screenX = Math.floor(point.x * perspective + width/2);
+                                const screenY = Math.floor(point.y * perspective + height/2);
+                                
+                                if (screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
+                                    if (point.z > zBuffer[screenY][screenX]) {
+                                        zBuffer[screenY][screenX] = point.z;
+                                        const brightness = Math.floor(((point.z + 50) / 100) * (chars.length - 1));
+                                        buffer[screenY][screenX] = chars[Math.max(0, Math.min(chars.length - 1, brightness))];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            document.getElementById('ascii').textContent = buffer.map(row => row.join('')).join('\n');
+            angle += 0.03;
+            requestAnimationFrame(drawText3D);
+        }
+        
+        drawText3D();
+    </script>
+</body>
+</html>
